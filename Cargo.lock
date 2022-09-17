@@ -70,7 +70,6 @@ version = "0.1.0"
 dependencies = [
  "cargo_toml",
  "clap",
- "clap-cargo",
  "escargot",
  "exitcode",
  "human-panic",
@@ -119,16 +118,6 @@ dependencies = [
  "strsim",
  "termcolor",
  "textwrap",
-]
-
-[[package]]
-name = "clap-cargo"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841b17c26cdae63b80cd9014f4fb779b761c388908bdf58e15223a08d65e9b08"
-dependencies = [
- "clap",
- "doc-comment",
 ]
 
 [[package]]
@@ -197,12 +186,6 @@ dependencies = [
  "cfg-if",
  "once_cell",
 ]
-
-[[package]]
-name = "doc-comment"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "either"

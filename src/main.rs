@@ -1,29 +1,11 @@
+mod cli;
+
 use cargo_toml::{Dependency, DepsSet, Manifest};
-use clap::{Parser, Subcommand};
+use clap::Parser;
+use cli::{Cargo, SubCommand};
 use indoc::formatdoc;
 use std::fs::DirBuilder;
 use std::process::{Command, Stdio};
-
-#[derive(Debug, Parser)]
-#[clap(name = "cargo")]
-#[clap(bin_name = "cargo")]
-enum Cargo {
-    Dylib(DylibCli),
-}
-
-#[derive(Debug, clap::Args)]
-#[clap(author, version, about)]
-struct DylibCli {
-    #[clap(subcommand)]
-    pub subcommand: SubCommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum SubCommand {
-    Init,
-    Build,
-    Run,
-}
 
 const DYNLIB_PATH: &'static str = "target/cargo-dylib/";
 const DYNLIB_MANIFEST_PATH: &'static str = "target/cargo-dylib/Cargo.toml";
