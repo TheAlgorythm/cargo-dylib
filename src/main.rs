@@ -4,6 +4,7 @@ use cargo_toml::{Dependency, DepsSet, Manifest};
 use clap::Parser;
 use cli::{Cargo, SubCommand};
 use indoc::formatdoc;
+use rayon::prelude::*;
 use std::fs::DirBuilder;
 use std::process::{Command, Stdio};
 
@@ -30,7 +31,11 @@ fn init_dylibs() {
         .create(DYNLIB_PATH)
         .unwrap();
 
-    dylib_manifest.dependencies = real_manifest.dependencies.iter().map(init_dep).collect();
+    dylib_manifest.dependencies = real_manifest
+        .dependencies
+        .par_iter()
+        .map(init_dep)
+        .collect();
 
     dylib_manifest.bin.first_mut().unwrap().path = Some("../../src/main.rs".to_string());
 
@@ -41,6 +46,16 @@ fn init_dylibs() {
 fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
     let dynamic_name = format!("{}-dynamic", dep.0);
     let dynamic_crate_path = format!("{DYNLIB_PATH}{dynamic_name}");
+
+    let mut dep_detail = cargo_toml::DependencyDetail::default();
+    dep_detail.path = Some(dynamic_name.clone());
+    dep_detail.package = Some(dynamic_name.clone());
+
+    let dependency = (dep.0.clone(), Dependency::Detailed(dep_detail));
+
+    if std::path::Path::new(&dynamic_crate_path).exists() {
+        return dependency;
+    }
 
     DirBuilder::new()
         .recursive(true)
@@ -74,14 +89,12 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
     )
     .unwrap();
 
-    let mut dep_detail = cargo_toml::DependencyDetail::default();
-    dep_detail.path = Some(dynamic_name.clone());
-    dep_detail.package = Some(dynamic_name);
-
-    (dep.0.clone(), Dependency::Detailed(dep_detail))
+    dependency
 }
 
 fn build() {
+    init_dylibs();
+
     Command::new("cargo")
         .arg("build")
         .arg("--manifest-path")
