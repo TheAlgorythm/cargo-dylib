@@ -2,7 +2,7 @@ mod cli;
 
 use cargo_toml::{Dependency, DepsSet, Manifest};
 use clap::Parser;
-use cli::{Cargo, SubCommand};
+use cli::{Cargo, DylibCli};
 use indoc::formatdoc;
 use rayon::prelude::*;
 use std::fs;
@@ -14,11 +14,9 @@ const DYNLIB_MANIFEST_PATH: &str = "target/cargo-dylib/Cargo.toml";
 fn main() {
     let Cargo::Dylib(cli) = Cargo::parse();
 
-    match cli.subcommand {
-        SubCommand::Init => init_dylibs(),
-        SubCommand::Build => build(),
-        SubCommand::Run => run(),
-    }
+    init_dylibs();
+
+    invoke_cargo(&cli);
 }
 
 fn init_dylibs() {
@@ -111,27 +109,12 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
     dependency
 }
 
-fn build() {
-    init_dylibs();
-
+fn invoke_cargo(cli: &DylibCli) {
     Command::new("cargo")
-        .arg("build")
+        .arg(&cli.subcommand)
         .arg("--manifest-path")
         .arg(DYNLIB_MANIFEST_PATH)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-}
-
-fn run() {
-    Command::new("cargo")
-        .arg("run")
-        .arg("--manifest-path")
-        .arg(DYNLIB_MANIFEST_PATH)
+        .args(&cli.arguments)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[clap(name = "cargo")]
@@ -10,13 +10,6 @@ pub enum Cargo {
 #[derive(Debug, clap::Args)]
 #[clap(author, version, about)]
 pub struct DylibCli {
-    #[clap(subcommand)]
-    pub subcommand: SubCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum SubCommand {
-    Init,
-    Build,
-    Run,
+    pub subcommand: String,
+    pub arguments: Vec<String>,
 }
