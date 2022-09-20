@@ -5,11 +5,11 @@ use clap::Parser;
 use cli::{Cargo, SubCommand};
 use indoc::formatdoc;
 use rayon::prelude::*;
-use std::fs::DirBuilder;
+use std::fs;
 use std::process::{Command, Stdio};
 
-const DYNLIB_PATH: &'static str = "target/cargo-dylib/";
-const DYNLIB_MANIFEST_PATH: &'static str = "target/cargo-dylib/Cargo.toml";
+const DYNLIB_PATH: &str = "target/cargo-dylib/";
+const DYNLIB_MANIFEST_PATH: &str = "target/cargo-dylib/Cargo.toml";
 
 fn main() {
     let Cargo::Dylib(cli) = Cargo::parse();
@@ -23,10 +23,27 @@ fn main() {
 
 fn init_dylibs() {
     let real_manifest_path = "Cargo.toml";
+
+    let real_manifest_modified = fs::metadata(real_manifest_path)
+        .unwrap()
+        .modified()
+        .unwrap();
+    let dylib_manifest_modified = fs::metadata(DYNLIB_MANIFEST_PATH)
+        .ok()
+        .map(|metadata| metadata.modified())
+        .transpose()
+        .unwrap();
+    if dylib_manifest_modified
+        .map(|modified| real_manifest_modified < modified)
+        .unwrap_or(false)
+    {
+        return;
+    }
+
     let real_manifest = Manifest::from_path(real_manifest_path).unwrap();
     let mut dylib_manifest = real_manifest.clone();
 
-    DirBuilder::new()
+    fs::DirBuilder::new()
         .recursive(true)
         .create(DYNLIB_PATH)
         .unwrap();
@@ -47,9 +64,11 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
     let dynamic_name = format!("{}-dynamic", dep.0);
     let dynamic_crate_path = format!("{DYNLIB_PATH}{dynamic_name}");
 
-    let mut dep_detail = cargo_toml::DependencyDetail::default();
-    dep_detail.path = Some(dynamic_name.clone());
-    dep_detail.package = Some(dynamic_name.clone());
+    let dep_detail = cargo_toml::DependencyDetail {
+        path: Some(dynamic_name.clone()),
+        package: Some(dynamic_name.clone()),
+        ..Default::default()
+    };
 
     let dependency = (dep.0.clone(), Dependency::Detailed(dep_detail));
 
@@ -57,7 +76,7 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
         return dependency;
     }
 
-    DirBuilder::new()
+    fs::DirBuilder::new()
         .recursive(true)
         .create(format!("{dynamic_crate_path}/src"))
         .unwrap();
