@@ -5,6 +5,7 @@ use clap::Parser;
 use cli::{Cargo, DylibCli};
 use indoc::formatdoc;
 use rayon::prelude::*;
+use serde::Serialize;
 use std::fs;
 use std::process::{Command, Stdio};
 
@@ -17,6 +18,11 @@ fn main() {
     init_dylibs();
 
     invoke_cargo(&cli);
+}
+
+#[derive(Debug, Serialize)]
+struct ManifestDependencies {
+    pub dependencies: DepsSet,
 }
 
 fn init_dylibs() {
@@ -79,10 +85,12 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
         .create(format!("{dynamic_crate_path}/src"))
         .unwrap();
 
-    let mut deps = DepsSet::new();
-    deps.insert(dep.0.clone(), dep.1.clone());
-    let deps = toml::to_string(&deps).unwrap();
-    let deps_no_open_bracket = deps.get(1..).unwrap();
+    let mut dynamic_dependencies = DepsSet::new();
+    dynamic_dependencies.insert(dep.0.clone(), dep.1.clone());
+    let dynamic_dependencies = ManifestDependencies {
+        dependencies: dynamic_dependencies,
+    };
+    let dynamic_dependencies = toml::to_string(&dynamic_dependencies).unwrap();
 
     let dynamic_manifest = formatdoc!(
         "
@@ -91,7 +99,7 @@ fn init_dep(dep: (&String, &Dependency)) -> (String, Dependency) {
         version = '0.1.0'
         edition = '2021'
     
-        [dependencies.{deps_no_open_bracket}
+        {dynamic_dependencies}
 
         [lib]
         crate-type = ['dylib']
