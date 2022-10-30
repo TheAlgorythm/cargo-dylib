@@ -11,7 +11,9 @@ clap = { version = "3.2.22", features = ["derive"] }
 exitcode = "1.1.2"
 human-panic = "1.0.3"
 indoc = "1.0.7"
+locate-cargo-manifest = "0.2.2"
 rayon = "1.5.3"
 serde = { version = "1.0.144", features = ["derive"] }
+tap = "1.0.1"
 thiserror = "1.0.35"
 toml = "0.5.9"
