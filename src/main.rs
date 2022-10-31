@@ -29,17 +29,17 @@ fn main() -> Result<(), Error> {
     let Cargo::Dylib(cli) = Cargo::parse();
 
     let real_manifest_path = locate_cargo_manifest::locate_manifest()?;
-    let dynlib_path = real_manifest_path
+    let dylib_path = real_manifest_path
         .clone()
         .tap_mut(|real| {
             real.pop();
         })
         .tap_mut(|root| root.extend(["target", "cargo-dylib"]));
-    let dynlib_manifest_path = dynlib_path.join("Cargo.toml");
+    let dylib_manifest_path = dylib_path.join("Cargo.toml");
 
-    init_dylibs(&real_manifest_path, &dynlib_path, &dynlib_manifest_path)?;
+    init_dylibs(&real_manifest_path, &dylib_path, &dylib_manifest_path)?;
 
-    invoke_cargo(&cli, &dynlib_manifest_path)?;
+    invoke_cargo(&cli, &dylib_manifest_path)?;
 
     Ok(())
 }
@@ -51,11 +51,11 @@ struct ManifestDependencies {
 
 fn init_dylibs(
     real_manifest_path: &Path,
-    dynlib_path: &Path,
-    dynlib_manifest_path: &Path,
+    dylib_path: &Path,
+    dylib_manifest_path: &Path,
 ) -> Result<(), Error> {
     let real_manifest_modified = fs::metadata(real_manifest_path)?.modified()?;
-    let dylib_manifest_modified = fs::metadata(dynlib_manifest_path)
+    let dylib_manifest_modified = fs::metadata(dylib_manifest_path)
         .ok()
         .map(|metadata| metadata.modified())
         .transpose()?;
@@ -69,28 +69,28 @@ fn init_dylibs(
     let real_manifest = Manifest::from_path(real_manifest_path)?;
     let mut dylib_manifest = real_manifest.clone();
 
-    fs::DirBuilder::new().recursive(true).create(dynlib_path)?;
+    fs::DirBuilder::new().recursive(true).create(dylib_path)?;
 
     dylib_manifest.dependencies = real_manifest
         .dependencies
         .par_iter()
-        .map(|dep| init_dep(dep, dynlib_path))
+        .map(|dep| init_dep(dep, dylib_path))
         .collect::<Result<_, _>>()?;
 
     dylib_manifest.bin.first_mut().unwrap().path = Some("../../src/main.rs".to_string());
 
     let dylib_manifest = toml::to_string(&dylib_manifest)?;
-    std::fs::write(dynlib_manifest_path, dylib_manifest)?;
+    std::fs::write(dylib_manifest_path, dylib_manifest)?;
 
     Ok(())
 }
 
 fn init_dep(
     dep: (&String, &Dependency),
-    dynlib_path: &Path,
+    dylib_path: &Path,
 ) -> Result<(String, Dependency), Error> {
     let dynamic_name = format!("{}-dynamic", dep.0);
-    let dynamic_crate_path = dynlib_path.join(&dynamic_name);
+    let dynamic_crate_path = dylib_path.join(&dynamic_name);
 
     let dep_detail = cargo_toml::DependencyDetail {
         path: Some(dynamic_name.clone()),
@@ -140,11 +140,11 @@ fn init_dep(
     Ok(dependency)
 }
 
-fn invoke_cargo(cli: &DylibCli, dynlib_manifest_path: &Path) -> std::io::Result<()> {
+fn invoke_cargo(cli: &DylibCli, dylib_manifest_path: &Path) -> std::io::Result<()> {
     Command::new("cargo")
         .arg(&cli.subcommand)
         .arg("--manifest-path")
-        .arg(dynlib_manifest_path)
+        .arg(dylib_manifest_path)
         .args(&cli.arguments)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
