@@ -79,6 +79,7 @@ dependencies = [
  "tap",
  "thiserror",
  "toml",
+ "tool",
 ]
 
 [[package]]
@@ -535,6 +536,12 @@ checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "tool"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83a6cfb761df758cd8419ca6645bd51dd0616f5e3868f6707f0af765a693bd9e"
 
 [[package]]
 name = "unicode-ident"

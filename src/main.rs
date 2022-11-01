@@ -1,4 +1,5 @@
 mod cli;
+mod utils;
 
 use cargo_toml::{Dependency, DepsSet, Manifest};
 use clap::Parser;
@@ -10,6 +11,8 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tap::Tap;
+use tool::prelude::*;
+use utils::inject;
 
 #[derive(thiserror::Error, Debug)]
 enum Error {
@@ -23,7 +26,7 @@ enum Error {
     LocateManifest(#[from] locate_cargo_manifest::LocateManifestError),
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<std::process::ExitCode, Error> {
     human_panic::setup_panic!();
 
     let Cargo::Dylib(cli) = Cargo::parse();
@@ -39,9 +42,7 @@ fn main() -> Result<(), Error> {
 
     init_dylibs(&real_manifest_path, &dylib_path, &dylib_manifest_path)?;
 
-    invoke_cargo(&cli, &dylib_manifest_path)?;
-
-    Ok(())
+    invoke_cargo(&cli, &dylib_manifest_path).map_err(Error::Io)
 }
 
 #[derive(Debug, Serialize)]
@@ -54,15 +55,7 @@ fn init_dylibs(
     dylib_path: &Path,
     dylib_manifest_path: &Path,
 ) -> Result<(), Error> {
-    let real_manifest_modified = fs::metadata(real_manifest_path)?.modified()?;
-    let dylib_manifest_modified = fs::metadata(dylib_manifest_path)
-        .ok()
-        .map(|metadata| metadata.modified())
-        .transpose()?;
-    if dylib_manifest_modified
-        .map(|modified| real_manifest_modified < modified)
-        .unwrap_or(false)
-    {
+    if has_manifest_changed(real_manifest_path, dylib_manifest_path)? {
         return Ok(());
     }
 
@@ -74,7 +67,7 @@ fn init_dylibs(
     dylib_manifest.dependencies = real_manifest
         .dependencies
         .par_iter()
-        .map(|dep| init_dep(dep, dylib_path))
+        .map(inject(init_dep, dylib_path))
         .collect::<Result<_, _>>()?;
 
     dylib_manifest.bin.first_mut().unwrap().path = Some("../../src/main.rs".to_string());
@@ -83,6 +76,20 @@ fn init_dylibs(
     std::fs::write(dylib_manifest_path, dylib_manifest)?;
 
     Ok(())
+}
+
+fn has_manifest_changed(
+    real_manifest_path: &Path,
+    dylib_manifest_path: &Path,
+) -> Result<bool, Error> {
+    let real_manifest_modified = fs::metadata(real_manifest_path)?.modified()?;
+    let dylib_manifest_modified = fs::metadata(dylib_manifest_path)
+        .ok()
+        .map(|metadata| metadata.modified())
+        .transpose()?;
+    Ok(dylib_manifest_modified
+        .map(|modified| real_manifest_modified < modified)
+        .unwrap_or(false))
 }
 
 fn init_dep(
@@ -140,7 +147,12 @@ fn init_dep(
     Ok(dependency)
 }
 
-fn invoke_cargo(cli: &DylibCli, dylib_manifest_path: &Path) -> std::io::Result<()> {
+fn invoke_cargo(
+    cli: &DylibCli,
+    dylib_manifest_path: &Path,
+) -> std::io::Result<std::process::ExitCode> {
+    let status_to_u8 = compose(ok, u8::try_from);
+
     Command::new("cargo")
         .arg(&cli.subcommand)
         .arg("--manifest-path")
@@ -150,7 +162,6 @@ fn invoke_cargo(cli: &DylibCli, dylib_manifest_path: &Path) -> std::io::Result<(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()?
-        .wait()?;
-
-    Ok(())
+        .wait()
+        .map(|status| status.code().and_then(status_to_u8).unwrap_or(1).into())
 }
