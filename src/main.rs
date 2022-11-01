@@ -64,21 +64,11 @@ fn init_dylibs(
         return Ok(());
     }
 
-    let real_manifest = Manifest::from_path(real_manifest_path)?;
-    let mut dylib_manifest = real_manifest.clone();
-
     fs::DirBuilder::new().recursive(true).create(dylib_path)?;
 
-    dylib_manifest.dependencies = real_manifest
-        .dependencies
-        .par_iter()
-        .map(inject(init_dep, dylib_path))
-        .collect::<Result<_, _>>()?;
+    let dylib_manifest = create_dylibs_with_manifest(real_manifest_path, dylib_path)?;
 
-    dylib_manifest.bin.first_mut().unwrap().path = Some("../../src/main.rs".to_string());
-
-    let dylib_manifest = toml::to_string(&dylib_manifest)?;
-    std::fs::write(dylib_manifest_path, dylib_manifest)?;
+    write_dylib_manifest(dylib_manifest, dylib_manifest_path)?;
 
     Ok(())
 }
@@ -92,9 +82,33 @@ fn has_manifest_changed(
         .ok()
         .map(|metadata| metadata.modified())
         .transpose()?;
+
     Ok(dylib_manifest_modified
         .map(|modified| real_manifest_modified < modified)
         .unwrap_or(false))
+}
+
+fn create_dylibs_with_manifest(
+    real_manifest_path: &Path,
+    dylib_path: &Path,
+) -> Result<Manifest, Error> {
+    let real_manifest = Manifest::from_path(real_manifest_path)?;
+    let mut dylib_manifest = real_manifest.clone();
+
+    dylib_manifest.dependencies = real_manifest
+        .dependencies
+        .par_iter()
+        .map(inject(init_dep, dylib_path))
+        .collect::<Result<_, _>>()?;
+
+    dylib_manifest.bin.first_mut().unwrap().path = Some("../../src/main.rs".to_string());
+
+    Ok(dylib_manifest)
+}
+
+fn write_dylib_manifest(dylib_manifest: Manifest, dylib_manifest_path: &Path) -> Result<(), Error> {
+    let dylib_manifest = toml::to_string(&dylib_manifest)?;
+    std::fs::write(dylib_manifest_path, dylib_manifest).map_err(Error::Io)
 }
 
 fn init_dep(dep: (&String, &Dependency), dylib_path: &Path) -> Result<(String, Dependency), Error> {
