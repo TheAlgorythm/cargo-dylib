@@ -31,6 +31,14 @@ fn main() -> Result<std::process::ExitCode, Error> {
 
     let Cargo::Dylib(cli) = Cargo::parse();
 
+    let (real_manifest_path, dylib_path, dylib_manifest_path) = get_paths()?;
+
+    init_dylibs(&real_manifest_path, &dylib_path, &dylib_manifest_path)?;
+
+    invoke_cargo(&cli, &dylib_manifest_path).map_err(Error::Io)
+}
+
+fn get_paths() -> Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf), Error> {
     let real_manifest_path = locate_cargo_manifest::locate_manifest()?;
     let dylib_path = real_manifest_path
         .clone()
@@ -39,10 +47,7 @@ fn main() -> Result<std::process::ExitCode, Error> {
         })
         .tap_mut(|root| root.extend(["target", "cargo-dylib"]));
     let dylib_manifest_path = dylib_path.join("Cargo.toml");
-
-    init_dylibs(&real_manifest_path, &dylib_path, &dylib_manifest_path)?;
-
-    invoke_cargo(&cli, &dylib_manifest_path).map_err(Error::Io)
+    Ok((real_manifest_path, dylib_path, dylib_manifest_path))
 }
 
 #[derive(Debug, Serialize)]
@@ -92,10 +97,7 @@ fn has_manifest_changed(
         .unwrap_or(false))
 }
 
-fn init_dep(
-    dep: (&String, &Dependency),
-    dylib_path: &Path,
-) -> Result<(String, Dependency), Error> {
+fn init_dep(dep: (&String, &Dependency), dylib_path: &Path) -> Result<(String, Dependency), Error> {
     let dynamic_name = format!("{}-dynamic", dep.0);
     let dynamic_crate_path = dylib_path.join(&dynamic_name);
 
