@@ -7,9 +7,9 @@ use cli::{Cargo, DylibCli};
 use indoc::formatdoc;
 use rayon::prelude::*;
 use serde::Serialize;
-use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::{fs, io};
 use tap::Tap;
 use tool::prelude::*;
 use utils::inject;
@@ -17,7 +17,7 @@ use utils::inject;
 #[derive(thiserror::Error, Debug)]
 enum Error {
     #[error(transparent)]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
     #[error(transparent)]
     TomlSerialize(#[from] toml::ser::Error),
     #[error(transparent)]
@@ -53,6 +53,16 @@ fn get_paths() -> Result<(std::path::PathBuf, std::path::PathBuf, std::path::Pat
 #[derive(Debug, Serialize)]
 struct ManifestDependencies {
     pub dependencies: DepsSet,
+}
+
+impl ManifestDependencies {
+    fn from_dependency(dep: (&String, &Dependency)) -> Self {
+        let mut subdependencies = DepsSet::new();
+        subdependencies.insert(dep.0.clone(), dep.1.clone());
+        Self {
+            dependencies: subdependencies,
+        }
+    }
 }
 
 fn init_dylibs(
@@ -115,16 +125,10 @@ fn init_dep(dep: (&String, &Dependency), dylib_path: &Path) -> Result<(String, D
     let dynamic_name = format!("{}-dynamic", dep.0);
     let dynamic_crate_path = dylib_path.join(&dynamic_name);
 
-    let dep_detail = cargo_toml::DependencyDetail {
-        path: Some(dynamic_name.clone()),
-        package: Some(dynamic_name.clone()),
-        ..Default::default()
-    };
-
-    let dependency = (dep.0.clone(), Dependency::Detailed(dep_detail));
+    let subdependency = subdependency(&dynamic_name, dep);
 
     if std::path::Path::new(&dynamic_crate_path).exists() {
-        return Ok(dependency);
+        return Ok(subdependency);
     }
 
     let dynamic_crate_src = dynamic_crate_path.join("src");
@@ -132,13 +136,30 @@ fn init_dep(dep: (&String, &Dependency), dylib_path: &Path) -> Result<(String, D
         .recursive(true)
         .create(&dynamic_crate_src)?;
 
-    let mut dynamic_dependencies = DepsSet::new();
-    dynamic_dependencies.insert(dep.0.clone(), dep.1.clone());
-    let dynamic_dependencies = ManifestDependencies {
-        dependencies: dynamic_dependencies,
-    };
-    let dynamic_dependencies = toml::to_string(&dynamic_dependencies)?;
+    let subdependencies = ManifestDependencies::from_dependency(dep);
+    let dynamic_manifest = create_dynamic_manifest(subdependencies, &dynamic_name)?;
 
+    write_dynamic_manifest(dynamic_crate_path, dynamic_manifest)?;
+
+    write_dynamic_src(dynamic_crate_src, dep)?;
+
+    Ok(subdependency)
+}
+
+fn subdependency(dynamic_name: &str, dep: (&String, &Dependency)) -> (String, Dependency) {
+    let dep_detail = cargo_toml::DependencyDetail {
+        path: Some(dynamic_name.to_string()),
+        package: Some(dynamic_name.to_string()),
+        ..Default::default()
+    };
+    (dep.0.clone(), Dependency::Detailed(dep_detail))
+}
+
+fn create_dynamic_manifest(
+    subdependencies: ManifestDependencies,
+    dynamic_name: &str,
+) -> Result<String, Error> {
+    let subdependencies = toml::to_string(&subdependencies)?;
     let dynamic_manifest = formatdoc!(
         "
         [package]
@@ -146,29 +167,36 @@ fn init_dep(dep: (&String, &Dependency), dylib_path: &Path) -> Result<(String, D
         version = '0.1.0'
         edition = '2021'
     
-        {dynamic_dependencies}
+        {subdependencies}
 
         [lib]
         crate-type = ['dylib']
         "
     );
+    Ok(dynamic_manifest)
+}
 
-    std::fs::write(dynamic_crate_path.join("Cargo.toml"), dynamic_manifest)?;
+fn write_dynamic_manifest(
+    dynamic_crate_path: std::path::PathBuf,
+    dynamic_manifest: String,
+) -> Result<(), io::Error> {
+    std::fs::write(dynamic_crate_path.join("Cargo.toml"), dynamic_manifest)
+}
 
+fn write_dynamic_src(
+    dynamic_crate_src: std::path::PathBuf,
+    dep: (&String, &Dependency),
+) -> Result<(), io::Error> {
     std::fs::write(
         dynamic_crate_src.join("lib.rs"),
         format!("pub use {}::*;", dep.0),
-    )?;
-
-    Ok(dependency)
+    )
 }
 
 fn invoke_cargo(
     cli: &DylibCli,
     dylib_manifest_path: &Path,
 ) -> std::io::Result<std::process::ExitCode> {
-    let status_to_u8 = compose(ok, u8::try_from);
-
     Command::new("cargo")
         .arg(&cli.subcommand)
         .arg("--manifest-path")
@@ -179,5 +207,11 @@ fn invoke_cargo(
         .stderr(Stdio::inherit())
         .spawn()?
         .wait()
-        .map(|status| status.code().and_then(status_to_u8).unwrap_or(1).into())
+        .map(status_to_exitcode)
+}
+
+fn status_to_exitcode(status: std::process::ExitStatus) -> std::process::ExitCode {
+    let i32_to_u8 = compose(ok, u8::try_from);
+
+    status.code().and_then(i32_to_u8).unwrap_or(1).into()
 }
