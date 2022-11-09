@@ -6,3 +6,8 @@ It works a bit like [`cargo-add-dynamic`](https://lib.rs/crates/cargo-add-dynami
 It does so by reading the `Cargo.toml`, laying out a shadow project structure and executes the command with a pointer to the shadow metadata.
 
 As this is just a proof of concept it won't generate dylibs recursively yet.
+
+## TODOs
+
+- [ ] Workspace support
+- [ ] Treat shared subdependencies as dylibs (recursive)
